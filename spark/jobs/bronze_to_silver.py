@@ -7,6 +7,7 @@ at-least-once delivery from Kafka.
 """
 import os
 import sys
+from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "conf"))
 
@@ -20,10 +21,16 @@ from pyspark.sql.types import (  # noqa: E402
 )
 from spark_session import get_spark  # noqa: E402
 
-BRONZE_PATH = os.environ.get("BRONZE_PATH", "/opt/data/delta/bronze/sensor_readings")
-SILVER_PATH = os.environ.get("SILVER_PATH", "/opt/data/delta/silver/sensor_readings")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+BRONZE_PATH = os.environ.get(
+    "BRONZE_PATH", str(PROJECT_ROOT / "data" / "delta" / "bronze" / "sensor_readings")
+)
+SILVER_PATH = os.environ.get(
+    "SILVER_PATH", str(PROJECT_ROOT / "data" / "delta" / "silver" / "sensor_readings")
+)
 CHECKPOINT_PATH = os.environ.get(
-    "SILVER_CHECKPOINT", "/opt/data/checkpoints/silver_sensor_readings"
+    "SILVER_CHECKPOINT", str(PROJECT_ROOT / "data" / "checkpoints" / "silver_sensor_readings")
 )
 
 PAYLOAD_SCHEMA = StructType([

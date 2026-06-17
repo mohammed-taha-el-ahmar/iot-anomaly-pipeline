@@ -10,6 +10,7 @@ Anomaly rule (placeholder, tune against backtested thresholds):
 """
 import os
 import sys
+from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "conf"))
 
@@ -17,10 +18,16 @@ from pyspark.sql.functions import abs as sabs  # noqa: E402
 from pyspark.sql.functions import avg, col, stddev, when, window  # noqa: E402
 from spark_session import get_spark  # noqa: E402
 
-SILVER_PATH = os.environ.get("SILVER_PATH", "/opt/data/delta/silver/sensor_readings")
-GOLD_PATH = os.environ.get("GOLD_PATH", "/opt/data/delta/gold/anomaly_alerts")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+SILVER_PATH = os.environ.get(
+    "SILVER_PATH", str(PROJECT_ROOT / "data" / "delta" / "silver" / "sensor_readings")
+)
+GOLD_PATH = os.environ.get(
+    "GOLD_PATH", str(PROJECT_ROOT / "data" / "delta" / "gold" / "anomaly_alerts")
+)
 CHECKPOINT_PATH = os.environ.get(
-    "GOLD_CHECKPOINT", "/opt/data/checkpoints/gold_anomaly_alerts"
+    "GOLD_CHECKPOINT", str(PROJECT_ROOT / "data" / "checkpoints" / "gold_anomaly_alerts")
 )
 
 Z_THRESHOLD = float(os.environ.get("Z_THRESHOLD", "3.0"))

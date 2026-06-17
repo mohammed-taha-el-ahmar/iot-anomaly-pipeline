@@ -7,17 +7,22 @@ filtering, or cleaning happens here by design.
 """
 import os
 import sys
+from pathlib import Path
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "conf"))
 
 from pyspark.sql.functions import col  # noqa: E402
 from spark_session import get_spark  # noqa: E402
 
-KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
 TOPIC = "sensor-readings"
-BRONZE_PATH = os.environ.get("BRONZE_PATH", "/opt/data/delta/bronze/sensor_readings")
+BRONZE_PATH = os.environ.get(
+    "BRONZE_PATH", str(PROJECT_ROOT / "data" / "delta" / "bronze" / "sensor_readings")
+)
 CHECKPOINT_PATH = os.environ.get(
-    "BRONZE_CHECKPOINT", "/opt/data/checkpoints/bronze_sensor_readings"
+    "BRONZE_CHECKPOINT", str(PROJECT_ROOT / "data" / "checkpoints" / "bronze_sensor_readings")
 )
 
 

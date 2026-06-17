@@ -1,21 +1,32 @@
 """
 Shared Spark session factory with Kafka + Delta Lake packages configured.
 """
+from pyspark import __version__ as PYSPARK_VERSION
 from pyspark.sql import SparkSession
 
-DELTA_VERSION = "3.1.0"
-SPARK_VERSION_SUFFIX = "_2.12"
+def _package_coords() -> str:
+    """Return Maven package coordinates matching the active Spark major line."""
+    spark_version = PYSPARK_VERSION
 
-PACKAGES = ",".join([
-    f"io.delta:delta-spark{SPARK_VERSION_SUFFIX}:{DELTA_VERSION}",
-    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0",
-])
+    if spark_version.startswith("4."):
+        # Spark 4 uses Scala 2.13 artifacts.
+        return ",".join([
+            "io.delta:delta-spark_2.13:4.0.0",
+            "org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1",
+        ])
+
+    # Spark 3.5.x baseline for this project.
+    return ",".join([
+        "io.delta:delta-spark_2.12:3.1.0",
+        "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0",
+    ])
 
 
 def get_spark(app_name: str) -> SparkSession:
+    packages = _package_coords()
     return (
         SparkSession.builder.appName(app_name)
-        .config("spark.jars.packages", PACKAGES)
+        .config("spark.jars.packages", packages)
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config(
             "spark.sql.catalog.spark_catalog",
