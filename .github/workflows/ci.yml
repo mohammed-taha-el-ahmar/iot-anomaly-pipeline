@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff==0.5.0
+      - name: Lint
+        run: ruff check producer spark dashboard tests
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: pip install -r tests/requirements.txt
+      - name: Run unit tests
+        run: pytest tests/ -v
+
+  validate-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose config
+        run: docker compose -f docker/docker-compose.yml config --quiet
+
+  smoke-test:
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests, validate-compose]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Create venv and install deps
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -r producer/requirements.txt
+          uv pip install --python .venv/bin/python -r dashboard/requirements.txt
+          uv pip install --python .venv/bin/python -r tests/requirements.txt
+
+      - name: Install Spark
+        run: |
+          SPARK_VERSION=3.5.3
+          HADOOP_VERSION=3
+          wget -q "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz"
+          tar xzf "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz"
+          echo "SPARK_HOME=$(pwd)/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}" >> "$GITHUB_ENV"
+          echo "$(pwd)/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}/bin" >> "$GITHUB_PATH"
+
+      - name: Start Kafka
+        run: |
+          docker compose -f docker/docker-compose.yml up -d zookeeper kafka
+          chmod +x scripts/wait-for-kafka.sh
+          ./scripts/wait-for-kafka.sh
+
+      - name: Create topics
+        run: |
+          chmod +x scripts/create-topics.sh
+          ./scripts/create-topics.sh
+
+      - name: Produce test messages
+        run: |
+          .venv/bin/python producer/sensor_simulator.py \
+            --devices 3 --rate 10 --anomaly-prob 0.2 &
+          PRODUCER_PID=$!
+          sleep 5
+          kill $PRODUCER_PID || true
+
+      - name: Run bronze stream (short burst)
+        run: |
+          chmod +x scripts/spark-submit-with-packages.sh
+          mkdir -p data/checkpoints data/delta/bronze data/delta/silver data/delta/gold
+          timeout 60 ./scripts/spark-submit-with-packages.sh spark/jobs/stream_to_bronze.py || true
+
+      - name: Verify bronze Delta table has data
+        run: |
+          .venv/bin/python -c "
+          from pyspark.sql import SparkSession
+          spark = SparkSession.builder.master('local').getOrCreate()
+          df = spark.read.format('delta').load('data/delta/bronze/sensor_readings')
+          count = df.count()
+          print(f'Bronze row count: {count}')
+          assert count > 0, f'Expected rows in bronze, got {count}'
+          df.show(5, truncate=False)
+          spark.stop()
+          "
+
+      - name: Run silver stream (short burst)
+        run: |
+          timeout 60 ./scripts/spark-submit-with-packages.sh spark/jobs/bronze_to_silver.py || true
+
+      - name: Verify silver Delta table has data
+        run: |
+          .venv/bin/python -c "
+          from pyspark.sql import SparkSession
+          spark = SparkSession.builder.master('local').getOrCreate()
+          df = spark.read.format('delta').load('data/delta/silver/sensor_readings')
+          count = df.count()
+          print(f'Silver row count: {count}')
+          assert count > 0, f'Expected rows in silver, got {count}'
+          df.show(5, truncate=False)
+          spark.stop()
+          "
+
+      - name: Teardown
+        if: always()
+        run: docker compose -f docker/docker-compose.yml down -v

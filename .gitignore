@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Local Delta Lake data & checkpoints (regenerated on run)
+data/delta/*/
+data/checkpoints/*
+!data/delta/.gitkeep
+!data/checkpoints/.gitkeep
+
+.DS_Store
+*.log
+
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
