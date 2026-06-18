@@ -4,6 +4,7 @@ Shared Spark session factory with Kafka + Delta Lake packages configured.
 from pyspark import __version__ as PYSPARK_VERSION
 from pyspark.sql import SparkSession
 
+
 def _package_coords() -> str:
     """Return Maven package coordinates matching the active Spark major line."""
     spark_version = PYSPARK_VERSION
